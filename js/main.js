@@ -103,6 +103,7 @@
     g.state = SIM.createState(g.compiled, cp ? { checkpoint: cp } : {});
     g.respawnTimer = 0;
     g.winTimer = 0;
+    g.wonStats = null;
     g.trail.length = 0;
     g.camSnap = true;
     acc = 0;
@@ -159,8 +160,17 @@
   // ------------------------------------------------------------------
   // Input
   // ------------------------------------------------------------------
+  // Autoplay policy blocks audio until the first gesture, so the menu track
+  // starts from whatever interaction comes first.
+  function ensureMenuMusic() {
+    if (app.screen !== 'game' && save.settings.music && !A.isPlaying()) {
+      A.playTrack(A.MENU_TRACK);
+    }
+  }
+
   function onDown(x, y, isTouch) {
     A.unlock();
+    ensureMenuMusic();
     app.mouse.x = x; app.mouse.y = y;
     if (app.screen === 'game' && game && !game.paused && !game.wonStats) {
       // HUD pause button?
@@ -212,7 +222,17 @@
 
   function bindInput(cv) {
     cv.addEventListener('mousedown', function (e) {
-      var p = canvasPos(e); onDown(p.x, p.y, false); e.preventDefault();
+      var p = canvasPos(e);
+      if (e.button !== 0) {
+        // Right/middle button: pan the editor, ignore everywhere else.
+        A.unlock();
+        if (app.screen === 'editor' && global.GD_EDITOR) {
+          global.GD_EDITOR.beginPan(p.x, p.y);
+        }
+        e.preventDefault();
+        return;
+      }
+      onDown(p.x, p.y, false); e.preventDefault();
     });
     global.addEventListener('mouseup', function (e) {
       var p = canvasPos(e); onUp(p.x, p.y);
@@ -234,14 +254,20 @@
     global.addEventListener('keydown', function (e) {
       if (e.repeat) return;
       A.unlock();
+      ensureMenuMusic();
       var k = e.code;
+      // The editor owns the whole keyboard while open (arrows, WASD, Escape).
+      if (app.screen === 'editor') {
+        if (global.GD_EDITOR) global.GD_EDITOR.onKey(k);
+        if (k === 'Space' || k.indexOf('Arrow') === 0) e.preventDefault();
+        return;
+      }
       if (k === 'Space' || k === 'ArrowUp' || k === 'KeyW') {
         if (app.screen === 'game') inputHeld = true;
         e.preventDefault();
       } else if (k === 'Escape' || k === 'KeyP') {
         if (app.screen === 'game' && game && !game.wonStats) togglePause();
-        else if (app.screen === 'editor') { /* editor handles */ }
-        else if (app.screen !== 'menu') { exitToMenu(); }
+        else if (app.screen !== 'menu' && app.screen !== 'game') exitToMenu();
       } else if (k === 'KeyZ') {
         if (app.screen === 'game' && game && game.practice && game.state &&
             !game.state.dead && !game.state.won && game.state.grounded) {
@@ -253,8 +279,6 @@
         if (app.screen === 'game' && game && game.practice) {
           game.checkpoints.pop();
         }
-      } else if (app.screen === 'editor' && global.GD_EDITOR) {
-        global.GD_EDITOR.onKey(k);
       }
     });
     global.addEventListener('keyup', function (e) {
@@ -271,10 +295,15 @@
   }
 
   function togglePause() {
-    if (!game) return;
+    if (!game || game.wonStats) return;
     game.paused = !game.paused;
-    if (game.paused) A.stopMusic();
-    else if (!game.state.dead) A.playTrack(game.compiled.meta.musicId);
+    if (game.paused) {
+      A.stopMusic();
+    } else if (game.practice || !game.state.dead) {
+      // Practice music loops through deaths, so a pause during the respawn
+      // window must still bring it back on resume.
+      A.playTrack(game.compiled.meta.musicId);
+    }
   }
 
   // ------------------------------------------------------------------
@@ -328,7 +357,9 @@
         A.sfxDeath();
         R.fx.explosion(ev.x + 15, ev.y + 15, save.settings.col1);
         g.respawnTimer = g.practice ? 0.45 : C.RESPAWN_DELAY;
-        if (!g.custom) {
+        // Practice progress is measured from checkpoints, not a real run —
+        // never let it into the saved best%.
+        if (!g.custom && !g.practice) {
           var ls = levelSave(g.compiled.meta.id);
           ls.best = Math.max(ls.best, Math.floor(SIM.progress(st) * 100));
           persist();
@@ -359,9 +390,9 @@
     var coins = st.coinsThisAttempt.slice();
     if (!g.custom) {
       var ls = levelSave(g.compiled.meta.id);
-      ls.best = 100;
       var newCoins = 0;
       if (!g.practice) {
+        ls.best = 100;
         for (var c = 0; c < 3; c++) {
           if (coins[c] && !ls.coins[c]) { ls.coins[c] = true; newCoins++; }
         }
@@ -696,8 +727,10 @@
       ctx.restore();
     }
 
-    button(R.W() - 70, 16, 54, 44, 'II', togglePause,
-      { color: '#94a3c0', size: 20, alpha: 0.85 });
+    if (!g.paused && !g.wonStats) {
+      button(R.W() - 70, 16, 54, 44, 'II', togglePause,
+        { color: '#94a3c0', size: 20, alpha: 0.85 });
+    }
 
     if (g.paused) drawPause();
     if (g.wonStats) drawWin();

@@ -107,7 +107,7 @@ function run(state, inputFn, maxSteps) {
   for (var i = 0; i < 600; i++) { SIM.stepSim(s, false); maxY = Math.max(maxY, s.y); }
   check('yellow pad launches (no input)', maxY > 100, 'maxY=' + maxY);
 
-  var lvl2 = mkLevel([{ t: T.ORB_YELLOW, x: 10, y: 0.5, w: 1, h: 1 }]);
+  var lvl2 = mkLevel([{ t: T.ORB_YELLOW, x: 12, y: 1.5, w: 1, h: 1 }]);
   var s2 = SIM.createState(lvl2);
   var maxY2 = 0;
   for (var j = 0; j < 600; j++) { SIM.stepSim(s2, false); maxY2 = Math.max(maxY2, s2.y); }
@@ -120,7 +120,65 @@ function run(state, inputFn, maxSteps) {
     SIM.stepSim(s3, s3.x / C.BLOCK > 9.0);
     maxY3 = Math.max(maxY3, s3.y);
   }
-  check('orb fires while held', maxY3 > 50, 'maxY=' + maxY3);
+  // A plain ground jump peaks at ~65 units; only an orb re-fire mid-air can
+  // exceed ~80, so this threshold actually tests orb activation.
+  check('orb fires while held', maxY3 > 80, 'maxY=' + maxY3);
+})();
+
+// --- 5b. Grounded state ends when support ends ------------------------------
+(function () {
+  var lvl = mkLevel([{ t: T.BLOCK, x: 10, y: 0, w: 4, h: 1 }]);
+  var s = SIM.createState(lvl);
+  s.x = 10.5 * C.BLOCK; s.y = C.BLOCK; s.grounded = true;
+  var fell = false;
+  for (var i = 0; i < 2000 && !s.dead; i++) {
+    SIM.stepSim(s, false);
+    if (s.x > 14.5 * C.BLOCK && s.y < C.BLOCK - 5) { fell = true; break; }
+  }
+  check('cube falls off a platform edge', fell, 'y=' + s.y);
+
+  var lvl2 = mkLevel([{ t: T.FINISH, x: 60, y: 0, w: 1, h: 14 }],
+    { pits: (function () {
+      var p = {};
+      for (var c = 12; c < 22; c++) p[c] = true;
+      return p;
+    })() });
+  var s2 = SIM.createState(lvl2);
+  run(s2, null, 20000);
+  check('grounded cube cannot hover across a pit', s2.dead && !s2.won,
+    'won=' + s2.won + ' dead=' + s2.dead);
+})();
+
+// --- 5c. No teleport out of a pit through the far lip ------------------------
+(function () {
+  var pits = {};
+  for (var c = 12; c < 17; c++) pits[c] = true;
+  var lvl = mkLevel([{ t: T.FINISH, x: 60, y: 0, w: 1, h: 14 }], { pits: pits });
+  var s = SIM.createState(lvl);
+  // Jump just before the pit: a 5-block pit outranges the ~4-block jump, so
+  // the player must fall in and die — not get clamped up through the far lip.
+  var res = run(s, function () {
+    var xb = s.x / C.BLOCK;
+    return xb > 10.9 && xb < 11.3;
+  }, 20000);
+  check('short jump into a wide pit dies in the pit', res.dead && !res.won,
+    'won=' + res.won + ' y=' + res.y);
+})();
+
+// --- 5d. Land events are edge-triggered for flying modes ---------------------
+(function () {
+  var lvl = mkLevel([{ t: T.PORTAL_SHIP, x: 5, y: 0, w: 1, h: 4 }]);
+  var s = SIM.createState(lvl);
+  var lands = 0;
+  for (var i = 0; i < 1200; i++) { // 5 seconds resting/sliding on the ground
+    SIM.stepSim(s, false);
+    for (var e = 0; e < s.events.length; e++) {
+      if (s.events[e].name === 'land') lands++;
+    }
+    s.events.length = 0;
+  }
+  check('ship sliding on ground emits at most one land event', lands <= 1,
+    'lands=' + lands);
 })();
 
 // --- 6. Portals: mode switch, gravity flip, speed change --------------------

@@ -290,6 +290,7 @@
     B.arrow(x + 1, 1, false);
     B.portal(T.PORTAL_BALL, x + 3, 0, 4);
     x = ballCorridor(B, x + 6, 64, 5, 8, 13);
+    B.gate(T.PORTAL_GRAV_DOWN, x); // player may exit rolling on the ceiling
     B.gate(T.PORTAL_CUBE, x + 1);
     x += 5;
 

@@ -99,6 +99,8 @@
       input: false,
       inputEdge: false,               // true only on the substep input went down
       orbLock: false,                 // require release before another orb fires
+      contact: true,                  // touching a surface this substep
+      contactPrev: true,              // ... and the previous one (edge detect)
       usedOnce: {},                   // one-shot objects consumed this attempt
       coins: opts.coins ? opts.coins.slice() : [{}, {}, {}].map(function () { return false; }),
       coinsThisAttempt: [false, false, false],
@@ -175,6 +177,8 @@
     s.inputEdge = input && !s.input;
     if (!input) s.orbLock = false;
     s.input = input;
+    s.contactPrev = s.contact;
+    s.contact = false;
 
     var dt = C.PHYS_DT;
     var sz = playerSize(s);
@@ -235,6 +239,10 @@
     // ---- Ground / ceiling ----
     var ceil = groundCeil(s);
     if (s.y <= ceil.floor) {
+      // Only land if we were at/above the floor last substep. A player deep
+      // inside a pit whose centre drifts over the far lip smacks into the
+      // pit wall instead of teleporting up through it.
+      if (prevY < ceil.floor - 4) { die(s, 'pit-wall'); return; }
       if (s.mode === MODE.WAVE && ceil.floor > C.GROUND_Y - 0.5 && ceil.floorIsBlock) {
         die(s, 'wave-floor');
         return;
@@ -308,11 +316,44 @@
       }
     }
 
+    // A grounded cube/ball must actually have something under (or, when
+    // inverted, over) it — walking off a platform edge or over a pit column
+    // starts a fall instead of levitating at the old height.
+    if (s.grounded && (s.mode === MODE.CUBE || s.mode === MODE.BALL)) {
+      if (!hasSupport(s, ceil)) s.grounded = false;
+    }
+
     // Fell far below the world (into a pit with no floor).
     if (s.y < -C.BLOCK * 6) { die(s, 'pit'); return; }
 
     s.time += dt;
     s.step++;
+  }
+
+  // Is there a surface within a small tolerance on the side gravity pulls?
+  function hasSupport(s, ceil) {
+    var sz = playerSize(s);
+    var eps = 2.0;
+    if (s.gravDir === 1) {
+      if (ceil.floor !== -Infinity && s.y <= ceil.floor + eps) return true;
+      var objs = queryRange(s.level, s.x - C.BLOCK, s.x + sz + C.BLOCK);
+      for (var i = 0; i < objs.length; i++) {
+        var o = objs[i];
+        if (!isSolid(o.type)) continue;
+        if (s.x < o.x + o.w && s.x + sz > o.x &&
+            Math.abs(s.y - (o.y + o.h)) <= eps) return true;
+      }
+      return false;
+    }
+    if (s.y + sz >= ceil.ceil - eps) return true;
+    var objs2 = queryRange(s.level, s.x - C.BLOCK, s.x + sz + C.BLOCK);
+    for (var j = 0; j < objs2.length; j++) {
+      var o2 = objs2[j];
+      if (!isSolid(o2.type)) continue;
+      if (s.x < o2.x + o2.w && s.x + sz > o2.x &&
+          Math.abs((s.y + sz) - o2.y) <= eps) return true;
+    }
+    return false;
   }
 
   function clampFall(vy, g, maxFall) {
@@ -346,15 +387,19 @@
   function landIfFalling(s, dir) {
     // dir: 1 landed on a floor, -1 landed on a ceiling.
     if (s.gravDir === dir) {
+      s.contact = true;
+      // Edge-triggered: ship/UFO/wave clear `grounded` every substep, so the
+      // contact flags (not `grounded`) decide whether this is a fresh touch.
+      if (!s.contactPrev) emit(s, 'land');
       if (!s.grounded) {
         s.grounded = true;
         snapRotation(s);
-        emit(s, 'land');
       }
-    } else if (s.mode === MODE.BALL || s.mode === MODE.CUBE) {
-      // Cube/ball resting against the surface opposite to gravity: for the
-      // ball this counts as rolling (it can flip again); the cube just slides.
-      if (s.mode === MODE.BALL) { s.grounded = true; snapRotation(s); }
+    } else if (s.mode === MODE.BALL) {
+      // Ball resting against the surface opposite to gravity counts as
+      // rolling (it can flip again); the cube just slides.
+      s.contact = true;
+      if (!s.grounded) { s.grounded = true; snapRotation(s); }
     }
   }
 

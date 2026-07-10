@@ -30,6 +30,7 @@ function cloneState(s, needUsedClone) {
     dead: false, won: false,
     time: s.time, step: s.step,
     input: s.input, inputEdge: false, orbLock: s.orbLock,
+    contact: s.contact, contactPrev: s.contactPrev,
     usedOnce: needUsedClone ? Object.assign({}, s.usedOnce) : s.usedOnce,
     coins: s.coins,
     coinsThisAttempt: needUsedClone
@@ -82,11 +83,19 @@ function solve(levelMeta, opts) {
   for (var tick = 0; tick < maxTicks; tick++) {
     var next = [];
     var seen = {};
-    var needClone = beam.length > 0 &&
-      interactiveAhead(compiled, beam[0].x);
+    // The clone decision must be per-state: beam candidates can sit at very
+    // different x (different speed-portal histories), and sharing a mutable
+    // usedOnce dict between siblings corrupts orb/pad consumption.
+    var cloneCache = {};
 
     for (var b = 0; b < beam.length; b++) {
       var st = beam[b];
+      var col = Math.floor(st.x / C.BLOCK);
+      var needClone = cloneCache[col];
+      if (needClone === undefined) {
+        needClone = interactiveAhead(compiled, st.x);
+        cloneCache[col] = needClone;
+      }
       for (var a = 0; a < 2; a++) {
         var input = a === 1;
         var n = cloneState(st, needClone);

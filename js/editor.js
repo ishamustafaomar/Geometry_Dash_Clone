@@ -65,7 +65,8 @@
       tool: 0,
       dragging: false, panning: false,
       lastX: 0, lastY: 0,
-      msg: '', msgT: 0
+      msg: '', msgT: 0,
+      clearArm: 0
     };
     normalize();
   }
@@ -199,9 +200,16 @@
     var pan = C.BLOCK * 2;
     if (code === 'ArrowRight' || code === 'KeyD') ed.camX += pan;
     if (code === 'ArrowLeft' || code === 'KeyA') ed.camX = Math.max(-C.BLOCK * 14, ed.camX - pan);
-    if (code === 'ArrowUp') ed.camY = Math.min(300, ed.camY + pan);
-    if (code === 'ArrowDown') ed.camY = Math.max(-70, ed.camY - pan);
+    if (code === 'ArrowUp' || code === 'KeyW') ed.camY = Math.min(300, ed.camY + pan);
+    if (code === 'ArrowDown' || code === 'KeyS') ed.camY = Math.max(-70, ed.camY - pan);
     if (code === 'Escape') exitEditor();
+  }
+
+  // Right-button drag pans regardless of the selected tool.
+  function beginPan(x, y) {
+    if (!ed) return;
+    ed.panning = true;
+    ed.lastX = x; ed.lastY = y;
   }
 
   function exitEditor() {
@@ -245,7 +253,7 @@
     drawPalette(button);
 
     R.outlinedText('EDITOR', R.W() / 2, 30, 28, '#c05aff');
-    R.outlinedText('click: place · arrows/WASD: scroll · pan tool: drag',
+    R.outlinedText('click: place · arrows/WASD: scroll · right-drag or pan tool: pan · Esc: save & exit',
       R.W() / 2, 60, 15, '#8fa0d0');
 
     if (ed.msgT > 0) {
@@ -253,6 +261,7 @@
       R.outlinedText(ed.msg, R.W() / 2, 96, 22, '#52ff7a', 'center',
         Math.min(1, ed.msgT));
     }
+    if (ed.clearArm > 0) ed.clearArm -= dt;
   }
 
   function drawGrid() {
@@ -301,16 +310,28 @@
       { color: '#52ff7a', size: 15 });
     button(W - 114, H - PALETTE_H + 10, 96, 34, 'SAVE', doSave,
       { color: '#ffd94a', size: 15 });
-    button(W - 220, H - PALETTE_H + 54, 96, 34, 'CLEAR', function () {
-      ed.level = blankLevel();
-      toast('Cleared');
-    }, { color: '#ff5a5a', size: 15 });
+    button(W - 220, H - PALETTE_H + 54, 96, 34,
+      ed.clearArm > 0 ? 'SURE?' : 'CLEAR', function () {
+        if (ed.clearArm > 0) {
+          // Keep the old level in a backup slot — CLEAR is otherwise
+          // irrecoverable because every exit path saves.
+          saveRef.customLevelBackup = JSON.parse(JSON.stringify(ed.level));
+          persistRef();
+          ed.level = blankLevel();
+          ed.clearArm = 0;
+          toast('Cleared (backup kept)');
+        } else {
+          ed.clearArm = 3;
+          toast('Click again to clear');
+        }
+      }, { color: '#ff5a5a', size: 15 });
     button(W - 114, H - PALETTE_H + 54, 96, 34, 'EXIT', exitEditor,
       { color: '#94a3c0', size: 15 });
   }
 
   global.GD_EDITOR = {
     open: open, frame: frame,
-    onDown: onDown, onUp: onUp, onMove: onMove, onKey: onKey
+    onDown: onDown, onUp: onUp, onMove: onMove, onKey: onKey,
+    beginPan: beginPan
   };
 })(typeof window !== 'undefined' ? window : globalThis);

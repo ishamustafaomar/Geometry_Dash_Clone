@@ -26,11 +26,13 @@
     if (ch > wh) { ch = wh; cw = wh * aspect; }
     canvas.style.width = cw + 'px';
     canvas.style.height = ch + 'px';
-    // Render at device resolution; all drawing stays in 1280x720 logical
-    // coordinates via the base transform.
-    canvas.width = Math.round(W * dpr);
-    canvas.height = Math.round(H * dpr);
-    ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // Match the backing store to the DISPLAYED size times DPR (capped for
+    // performance) so large/hiDPI screens stay sharp; all drawing keeps
+    // using 1280x720 logical coordinates via the base transform.
+    var k = Math.min(cw * dpr / W, 3);
+    canvas.width = Math.round(W * k);
+    canvas.height = Math.round(H * k);
+    ctx2d.setTransform(k, 0, 0, k, 0, 0);
   }
 
   // ------------------------------------------------------------------

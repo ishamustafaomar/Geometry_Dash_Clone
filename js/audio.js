@@ -9,7 +9,8 @@
   'use strict';
 
   var ctx = null;
-  var master, musicGain, sfxGain, delayBus;
+  var master, musicGain, sfxGain, delayBus, delayWet;
+  var trackBus = null; // per-track gain: lets stopMusic fade ringing notes
   var enabled = { music: true, sfx: true };
 
   function ensureCtx() {
@@ -44,11 +45,15 @@
     d.connect(fb);
     fb.connect(d);
     d.connect(wet);
-    wet.connect(musicGain);
+    delayWet = wet;
 
     noiseBuf = makeNoise();
     return ctx;
   }
+
+  // All music routes through the current track's bus so a track change can
+  // fade out anything still ringing (long pads, delay echoes).
+  function bus() { return trackBus || musicGain; }
 
   var noiseBuf = null;
   function makeNoise() {
@@ -79,7 +84,7 @@
     o.frequency.exponentialRampToValueAtTime(42, t + 0.09);
     g.gain.setValueAtTime(0.9, t);
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
-    o.connect(g); g.connect(musicGain);
+    o.connect(g); g.connect(bus());
     o.start(t); o.stop(t + 0.25);
   }
 
@@ -93,7 +98,7 @@
     var dur = open ? 0.14 : 0.04;
     g.gain.setValueAtTime(0.16, t);
     g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    src.connect(f); f.connect(g); g.connect(musicGain);
+    src.connect(f); f.connect(g); g.connect(bus());
     src.start(t); src.stop(t + dur + 0.02);
   }
 
@@ -105,13 +110,13 @@
     var g = ctx.createGain();
     g.gain.setValueAtTime(0.35, t);
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.13);
-    src.connect(f); f.connect(g); g.connect(musicGain);
+    src.connect(f); f.connect(g); g.connect(bus());
     src.start(t); src.stop(t + 0.16);
     var o = ctx.createOscillator(), g2 = ctx.createGain();
     o.type = 'triangle'; o.frequency.value = 190;
     g2.gain.setValueAtTime(0.25, t);
     g2.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
-    o.connect(g2); g2.connect(musicGain);
+    o.connect(g2); g2.connect(bus());
     o.start(t); o.stop(t + 0.1);
   }
 
@@ -126,7 +131,7 @@
     g.gain.exponentialRampToValueAtTime(0.24, t + 0.01);
     g.gain.setValueAtTime(0.24, t + Math.max(0.01, len - 0.04));
     g.gain.exponentialRampToValueAtTime(0.001, t + len);
-    o.connect(f); f.connect(g); g.connect(musicGain);
+    o.connect(f); f.connect(g); g.connect(bus());
     o.start(t); o.stop(t + len + 0.02);
   }
 
@@ -143,7 +148,7 @@
       g.gain.setValueAtTime(level, t + Math.max(0.012, len - 0.05));
       g.gain.exponentialRampToValueAtTime(0.001, t + len);
       o.connect(f); f.connect(g);
-      g.connect(musicGain);
+      g.connect(bus());
       if (i === 0) g.connect(delayBus);
       o.start(t); o.stop(t + len + 0.02);
     }
@@ -157,7 +162,7 @@
       g.gain.setValueAtTime(0.001, t);
       g.gain.linearRampToValueAtTime(0.07, t + len * 0.35);
       g.gain.linearRampToValueAtTime(0.001, t + len);
-      o.connect(g); g.connect(musicGain);
+      o.connect(g); g.connect(bus());
       o.start(t); o.stop(t + len + 0.05);
     }
   }
@@ -283,6 +288,10 @@
   function playTrack(id) {
     if (!ensureCtx()) return;
     stopMusic();
+    trackBus = ctx.createGain();
+    trackBus.connect(musicGain);
+    try { delayWet.disconnect(); } catch (e) { /* not connected yet */ }
+    delayWet.connect(trackBus);
     seq.playing = true;
     seq.trackId = id;
     seq.step = 0;
@@ -295,6 +304,16 @@
   function stopMusic() {
     seq.playing = false;
     if (seq.timer) { clearInterval(seq.timer); seq.timer = null; }
+    // Fade out anything still scheduled or ringing on the old track's bus
+    // (long pad chords, delay echoes), then drop the bus entirely.
+    if (trackBus && ctx) {
+      var old = trackBus;
+      trackBus = null;
+      old.gain.setTargetAtTime(0, ctx.currentTime, 0.05);
+      setTimeout(function () {
+        try { old.disconnect(); } catch (e) { /* already gone */ }
+      }, 600);
+    }
   }
 
   // Current position in beats (for renderer pulse effects).
@@ -389,6 +408,7 @@
     sfxClick: sfxClick,
     setEnabled: setEnabled,
     isEnabled: function (k) { return enabled[k]; },
+    isPlaying: function () { return seq.playing; },
     MENU_TRACK: 3
   };
 
