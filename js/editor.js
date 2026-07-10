@@ -129,12 +129,17 @@
     if (tool.t === T.PAD_YELLOW || tool.t === T.PAD_PINK ||
         tool.t === T.PAD_BLUE || tool.t === T.PAD_RED) o.h = 0.4;
     if (tool.t === T.COIN) {
-      var count = 0;
+      // Coins carry a persistent index 0..2 in rot; reuse the smallest free
+      // slot so erasing coin 0 doesn't create a duplicate index later.
+      var taken = [false, false, false];
       for (var j = 0; j < ed.level.objects.length; j++) {
-        if (ed.level.objects[j].t === T.COIN) count++;
+        if (ed.level.objects[j].t === T.COIN) {
+          taken[ed.level.objects[j].rot | 0] = true;
+        }
       }
-      if (count >= 3) { toast('Max 3 coins'); return; }
-      o.rot = count;
+      var slot = taken.indexOf(false);
+      if (slot === -1) { toast('Max 3 coins'); return; }
+      o.rot = slot;
     }
     ed.level.objects.push(o);
   }

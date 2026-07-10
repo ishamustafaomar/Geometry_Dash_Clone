@@ -26,9 +26,11 @@
     if (ch > wh) { ch = wh; cw = wh * aspect; }
     canvas.style.width = cw + 'px';
     canvas.style.height = ch + 'px';
-    canvas.width = Math.round(W * dpr) / dpr * dpr;
-    canvas.height = Math.round(H * dpr) / dpr * dpr;
-    canvas.width = W; canvas.height = H;
+    // Render at device resolution; all drawing stays in 1280x720 logical
+    // coordinates via the base transform.
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
   // ------------------------------------------------------------------

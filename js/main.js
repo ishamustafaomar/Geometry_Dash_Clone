@@ -105,8 +105,9 @@
     g.winTimer = 0;
     g.trail.length = 0;
     g.camSnap = true;
+    acc = 0;
     R.fx.clear();
-    if (!cp) A.playTrack(g.compiled.meta.musicId);
+    if (!g.practice || g.attempts === 1) A.playTrack(g.compiled.meta.musicId);
     persist();
   }
 
@@ -322,7 +323,8 @@
     for (var i = 0; i < st.events.length; i++) {
       var ev = st.events[i];
       if (ev.name === 'death') {
-        A.stopMusic();
+        // In practice mode the music keeps looping through deaths.
+        if (!g.practice) A.stopMusic();
         A.sfxDeath();
         R.fx.explosion(ev.x + 15, ev.y + 15, save.settings.col1);
         g.respawnTimer = g.practice ? 0.45 : C.RESPAWN_DELAY;
@@ -468,20 +470,20 @@
   }
 
   function drawAudioToggles(x, y) {
-    button(x, y, 56, 44, A.isEnabled('music') ? '♪' : '♪̶', function () {
+    button(x, y, 56, 44, A.isEnabled('music') ? '♪ ON' : '♪ OFF', function () {
       var on = !A.isEnabled('music');
       A.setEnabled('music', on);
       save.settings.music = on;
       persist();
       if (!on) A.stopMusic();
       else if (app.screen !== 'game') A.playTrack(A.MENU_TRACK);
-    }, { color: A.isEnabled('music') ? '#52ff7a' : '#94a3c0', size: 24 });
-    button(x + 68, y, 56, 44, A.isEnabled('sfx') ? '🔊' : '🔇', function () {
+    }, { color: A.isEnabled('music') ? '#52ff7a' : '#94a3c0', size: 15 });
+    button(x + 68, y, 56, 44, A.isEnabled('sfx') ? 'SFX' : 'sfx', function () {
       var on = !A.isEnabled('sfx');
       A.setEnabled('sfx', on);
       save.settings.sfx = on;
       persist();
-    }, { color: A.isEnabled('sfx') ? '#52ff7a' : '#94a3c0', size: 20 });
+    }, { color: A.isEnabled('sfx') ? '#52ff7a' : '#94a3c0', size: 15 });
   }
 
   function drawSelect() {
