@@ -1,0 +1,10 @@
+{
+  "name": "geometric-rush",
+  "version": "1.0.0",
+  "description": "An original Geometry Dash-style rhythm platformer: deterministic physics, five game modes, three solver-proven levels, synthesized music, and a level editor. No dependencies, no build step.",
+  "license": "MIT",
+  "scripts": {
+    "test": "node test/unit.js && node test/solve.js",
+    "start": "npx --yes http-server -p 8080 -c-1 ."
+  }
+}
